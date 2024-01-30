@@ -1,5 +1,4 @@
-
-    <h1>Java to LookML Converter</h1>
+<h1>Java to LookML Converter</h1>
 
     <h2>Overview</h2>
     <p>This project includes a Python script designed to automate the conversion of Java class files into LookML view files. It focuses on processing Java files for Looker projects by extracting relevant metadata and annotations and generating corresponding LookML code.</p>
