@@ -1,15 +1,4 @@
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Java to LookML Converter README</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        h1 { color: #4A90E2; }
-        h2 { color: #7ED321; }
-        p, ul { color: #333; }
-    </style>
-</head>
-<body>
+
     <h1>Java to LookML Converter</h1>
 
     <h2>Overview</h2>
@@ -35,5 +24,4 @@
 
     <h2>Note</h2>
     <p>Ensure Python is installed on your system. Basic Git operations knowledge is recommended.</p>
-</body>
-</html>
+
