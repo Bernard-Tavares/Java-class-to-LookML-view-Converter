@@ -2,206 +2,189 @@ import os
 import glob
 import re
 
+# List of excluded phrases to filter out files.
+excluded_phrases = ["static final", "extends LocalEntity", "private Integer version"]
 
-palavras_excluidas = ["static final", "extends LocalEntity", "private Integer versao"]
-
-def read_java_files(url):
-    classesExcluidas = ["filtervo", "vo", "importacao", "legado", "enum", "Client", "sed", "SED"]
+def read_java_files(directory):
+    # Classes to be excluded from processing.
+    excluded_classes = ["filtervo", "vo", "importacao", "legado", "enum", "Client", "sed", "SED"]
     public_class_files = []
     public_abstract_class_files = []
 
-    for source, _, files in os.walk(url):
+    # Walk through the directory to find Java files.
+    for source, _, files in os.walk(directory):
         for file in glob.glob(os.path.join(source, '*.java')):
             file_name = os.path.basename(file)
-            if any(palavra in file_name for palavra in classesExcluidas):
+            if any(word in file_name for word in excluded_classes):
                 continue
-            file_name = camel_case_para_snake_case(file_name, 'false')
+            file_name = camel_case_to_snake_case(file_name, 'false')
             file_name = 'sge_' + file_name
-            
 
             with open(file, 'r') as f:
-                conteudo = f.read()
+                content = f.read()
 
-            if 'public class ' in conteudo:
+            # Categorizing files based on class type.
+            if 'public class ' in content:
                 public_class_files.append((file, file_name))
-            elif 'public abstract class ' in conteudo:
+            elif 'public abstract class ' in content:
                 public_abstract_class_files.append((file, file_name))
 
-    # Processa primeiro os arquivos com 'public abstract class'
+    # Process files with 'public abstract class' first.
     for file, file_name in public_abstract_class_files:
-        processar_arquivo_java(file, file_name)
-                
+        process_java_file(file, file_name)
 
-    # Depois processa os arquivos com 'public class'
+    # Then process files with 'public class'.
     for file, file_name in public_class_files:
-        processar_arquivo_java(file, file_name)
+        process_java_file(file, file_name)
 
-   
-            
-            
-
-def processar_arquivo_java(file_path, file_name):
+def process_java_file(file_path, file_name):
     with open(file_path, 'r') as file:
-        conteudo = file.read()
-        if 'conselho_classe_matricula_deficiencia' in file_name:
-            print(file_name)
-        # Verifica se o arquivo contém 'public class'
-        if 'class ' in conteudo:
-            info_classe = extrair_anotacoes(conteudo)
-            gerar_lookml(info_classe, file_name)
-            
+        content = file.read()
+
+        # Check if the file contains 'public class'.
+        if 'class ' in content:
+            class_info = extract_annotations(content)
+            generate_lookml(class_info, file_name)
         else:
-            print(f"Arquivo {file_name} ignorado, não contém 'public class'.")
+            print(f"File {file_name} ignored, does not contain 'public class'.")
 
+def extract_annotations(content):
+    properties = {}
+    table_name = None
+    lines = content.splitlines()
+    base_class = None
+    column_name = None
+    extends_paper = "extends Papel" in content
 
-
-def extrair_anotacoes(conteudo):
-    propriedades = {}
-    nome_tabela = None
-    linhas = conteudo.splitlines()
-    classe_base = None
-    nome_coluna = None
-    extende_papel = "extends Papel" in conteudo
-    
-    for i, linha in enumerate(linhas):
-        if linha.strip().startswith('public ') and 'extends' in linha:
-            classe_base = linha.split('extends')[-1].split()[0].strip()
-            
+    for i, line in enumerate(lines):
+        if line.strip().startswith('public ') and 'extends' in line:
+            base_class = line.split('extends')[-1].split()[0].strip()
             continue
 
-        if any(palavra_excluida in linha for palavra_excluida in palavras_excluidas):
+        if any(excluded_word in line for excluded_word in excluded_phrases):
             continue
 
-        if linha.strip().startswith('@Table('):
-            nome_tabela = linha.split('"')[1]
-            
-        
-        if 'private' in linha or 'protected' in linha:
-            partes = linha.split()
-            if len(partes) < 3:
+        if line.strip().startswith('@Table('):
+            table_name = line.split('"')[1]
+
+        if 'private' in line or 'protected' in line:
+            parts = line.split()
+            if len(parts) < 3:
                 continue
-            tipo_campo = partes[1]
-            nome_campo = partes[2].replace(';', '')
+            field_type = parts[1]
+            field_name = parts[2].replace(';', '')
 
             j = i - 1
-            anotacoes = []
-            nome_coluna_especificado = None
-            while j >= 0 and ('@' in linhas[j]):
-                anotacao = linhas[j].strip()
-                if anotacao.startswith('@Column(name ='):
-                    nome_coluna_especificado = anotacao.split('"')[1]
-                    
-                if anotacao.startswith('@'):
-                    anotacoes.append(anotacao)
-                    
+            annotations = []
+            specified_column_name = None
+            while j >= 0 and ('@' in lines[j]):
+                annotation = lines[j].strip()
+                if annotation.startswith('@Column(name ='):
+                    specified_column_name = annotation.split('"')[1]
+
+                if annotation.startswith('@'):
+                    annotations.append(annotation)
+
                 j -= 1
-            
-            
-            nome_coluna = nome_coluna_especificado if nome_coluna_especificado is not None else nome_campo
-            nome_campo = camel_case_para_snake_case(nome_campo, 'false')
-            propriedades[nome_campo] = {'tipo': tipo_campo, 'anotacoes': anotacoes, 'nome_coluna': nome_coluna}
-            
 
-    return {'nome_tabela': nome_tabela, 'propriedades': propriedades, 'extende_papel': extende_papel, 'classe_base': classe_base}
+            column_name = specified_column_name if specified_column_name is not None else field_name
+            field_name = camel_case_to_snake_case(field_name, 'false')
+            properties[field_name] = {'type': field_type, 'annotations': annotations, 'column_name': column_name}
 
-def camel_case_para_snake_case(nome, tem_id):
-    if not nome is None:
-        if '.java' in nome:
-            nome = nome.replace('.java', '')
+    return {'table_name': table_name, 'properties': properties, 'extends_paper': extends_paper, 'base_class': base_class}
+
+def camel_case_to_snake_case(name, has_id):
+    if name is not None:
+        if '.java' in name:
+            name = name.replace('.java', '')
         
-        nome = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', nome)
-        nome = re.sub('([a-z0-9])([A-Z])', r'\1_\2', nome).lower()
-    if tem_id == 'true' :
-        nome += '_id'
+        name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+        name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+    if has_id == 'true':
+        name += '_id'
 
-    return nome
+    return name
 
-def gerar_lookml(info_classe, file_name):
-
-    nome_tabela = info_classe['nome_tabela']
-    classe_base = info_classe['classe_base']
-    extende_papel = info_classe['extende_papel']
+def generate_lookml(class_info, file_name):
+    table_name = class_info['table_name']
+    base_class = class_info['base_class']
+    extends_paper = class_info['extends_paper']
     lookml = f"view: {file_name} {{\n"
+
+    if table_name:
+        lookml += f"  sql_table_name: {{_user_attributes['database_user']}}.{table_name} ;;\n\n"
+
+    if base_class and base_class != 'SonnerBaseEntity':
+        if lookml_base_class_generated(base_class):
+            lookml += f"  extends: [{camel_case_to_snake_case(base_class, 'false')}]\n\n"
+        else:
+            print"Class not found for base view creation")
+            return 
     
-    if not nome_tabela is  None:
 
+    if extends_paper:
+        lookml += "     dimension: id {\n"
+        lookml += "         type: number\n"
+        lookml += "         sql: ${{TABLE}}.id ;;\n"
+        lookml += "         primary_key: yes\n"
+        lookml += "     }\n\n"
 
-        if nome_tabela:
-            lookml += f"  sql_table_name: {{_user_attributes['database_user']}}.{nome_tabela} ;;\n\n"
-
-        if classe_base and not 'SonnerBaseEntity' in classe_base:
-                if lookml_classe_base_gerado(classe_base):
-                    lookml += f"  extends: [{camel_case_para_snake_case(classe_base, 'false')}]\n\n"
-                else: 
-                    print("Classe base nao foi encontrada view criada para ela - " + classe_base )
-                    
+    for field_name, info in class_info['properties'].items():
+        lookml_type, is_primary_key = map_lookml_type(info['annotations'], info['type'])
         
 
-        if extende_papel:
-            lookml += "     dimension: id {\n"
-            lookml += "         type: number\n"
-            lookml += "         sql: ${{TABLE}}.id ;;\n"
+        if lookml_type == 'date':
+            lookml += f"     dimension_group: {field_name} {{\n"
+            lookml += f"        timeframes: [time, date, week, month, year]\n"
+        else:
+            lookml += f"     dimension: {field_name} {{\n"
+
+        lookml += f"        sql: ${{TABLE}}.{info['column_name']} ;;\n"
+        lookml += f"        type: {lookml_type}\n"
+        if is_primary_key:
             lookml += "         primary_key: yes\n"
-            lookml += "     }\n\n"
-
-        for nome_campo, info in info_classe['propriedades'].items():
-            tipo_lookml, is_primary_key = mapear_tipo_lookml(info['anotacoes'], info['tipo'])
-            
-
-            if tipo_lookml == 'date':
-                lookml += f"     dimension_group: {nome_campo} {{\n"
-                lookml += f"        timeframes: [time, date, week, month, year]\n"
-            else:
-                lookml += f"     dimension: {nome_campo} {{\n"
-
-            lookml += f"        sql: ${{TABLE}}.{info['nome_coluna']} ;;\n"
-            lookml += f"        type: {tipo_lookml}\n"
-            if is_primary_key:
-                lookml += "         primary_key: yes\n"
-            lookml += "     }\n"
-            lookml += "\n"
         lookml += "     }\n"
+        lookml += "\n"
+    lookml += "     }\n"
 
-        salvar_lookml_em_arquivo(lookml, file_name, pasta_looks)
-        return lookml
-    else: return print("Classe nao gerada - " + file_name)
+    save_lookml_file(lookml, file_name, destination_folder)
+    return lookml
 
-def lookml_classe_base_gerado(classe_base):
-    # Verifica se o arquivo LookML para a classe base existe
-    caminho_arquivo = os.path.join(pasta_looks, f"{camel_case_para_snake_case(classe_base, 'false')}.view.lkml")
-    return os.path.exists(caminho_arquivo)
+def lookml_base_class_generated(base_class):
+    # Check if the LookML file for the base class exists
+    file_path = os.path.join(destination_folder, f"{camel_case_to_snake_case(base_class, 'false')}.lkml")
+    return os.path.exists(file_path)
 
-def salvar_lookml_em_arquivo(lookml, nome_arquivo, pasta_destino):
-    # Certifique-se de que a pasta de destino existe
-    os.makedirs(pasta_destino, exist_ok=True)
+def save_lookml_file(lookml, file_name, destination_folder):
+    # Ensure the destination folder exists
+    os.makedirs(destination_folder, exist_ok=True)
 
-    caminho_completo = os.path.join(pasta_destino, f"{nome_arquivo}.view.lkml")
+    full_path = os.path.join(destination_folder, f"{file_name}.view.lkml")
 
-    with open(caminho_completo, 'w') as arquivo:
-        arquivo.write(lookml)
-    print(f"Arquivo LookML salvo em: {caminho_completo}")
+    with open(full_path, 'w') as file:
+        file.write(lookml)
+    print(f"LookML File saved at: {full_path}")
 
+def map_lookml_type(annotations, field_type):
+    is_primary_key = '@Id' in annotations or '@GeneratedValue' in annotations
 
-def mapear_tipo_lookml(anotacoes, tipo_campo):
-    is_primary_key = '@Id' in anotacoes or '@GeneratedValue' in anotacoes
-
-    if tipo_campo == 'ForeignKey':
+    if field_type == 'ForeignKey':
         return 'number', is_primary_key
 
-    # Mapeamento baseado no tipo do campo
-    tipo_lookml = {
+    # Mapping based on field type
+    lookml_type = {
         'String': 'string',
         'Integer': 'number',
         'Long': 'number',
         'BigDecimal': 'number',
-        'Date': 'date',  # ou 'time', dependendo da necessidade
+        'Date': 'date',  # or 'time', depending on the need
         'Boolean': 'yesno',
-        # Adicione outros mapeamentos conforme necessário
-    }.get(tipo_campo, 'string')  # Tipo padrão
+        # Add other mappings as necessary
+    }.get(field_type, 'string')  # Default type
 
-    return tipo_lookml, is_primary_key
+    return lookml_type, is_primary_key
 
-pasta_leitura = '/home/bernard/development/projects/grp-web/grp-web/sonner-model/src/main/java/br/com/sonner/escola/model/'
-pasta_looks = '/home/bernard/development/pip/generated'
-# Substitua 'caminho_para_pasta' pelo caminho do diretório que contém os arquivos Java
-read_java_files(pasta_leitura)
+source_folder = '/home/bernard/development/projects/grp-web/grp-web/sonner-model/src/main/java/br/com/sonner/escola/model/'
+destination_folder = '/home/bernard/development/pip/generated'
+# Replace 'path_to_folder' with the path to the directory containing the Java files
+read_java_files(source_folder)
